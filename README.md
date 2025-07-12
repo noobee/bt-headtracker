@@ -15,7 +15,7 @@
 - simple battery voltage measurement circuit, reports battery level over bluetooth.
 - emulates gamepad X (roll), Y (pitch) and Z (Yaw) axes for 3 rotational degrees of freedom. no translation (position) output.
 - simple serial console to perform basic operations (including gyro calibration).
-- stores gyro calibation offsets in eeprom.
+- stores gyro calibation bias offsets in eeprom.
 
 ## serial console
 
@@ -24,17 +24,17 @@ connect via USB to perform basic operations over the serial console, type one of
 - `restart`: restart device.
 - `batt`: show battery voltage and approximate level.
 - `imu`: show imu output (gyro, accel and pitch/roll/yaw). used to check proper mounting orientation of the device (when the pitch and roll angles are close to zero).
-- `config`: show configuration (currently only includes gyro calibration offsets).
-- `clear`: clear configuration (currently zeros out gyro calibration offsets).
+- `config`: show configuration (currently only includes gyro calibration bias offsets).
+- `clear`: clear configuration (currently zeros out gyro calibration bias offsets).
 - `calibrate`: start gyro calibration (need to keep device still).
 
 ## LED indication
 
-- solid white: booting up.
-- flashing red: error during bootup.
-- flashing blue: updating IMU status over bluetooth.
-- flashing green: calibrating the gyro.
-- nothing: probably waiting for bluetooth connection.
+- solid white: initialization.
+- solid/flashing red: error (probably during initialization).
+- solid blue: bluetooth connected and updating IMU.
+- solid green: gyro calibration.
+- nothing, unlit: idle, waiting for bluetooth connection.
 
 ## pictures
 
@@ -66,7 +66,7 @@ connect via USB to perform basic operations over the serial console, type one of
 > <img src="docs/usb game controller.png" width="800">
 
 
-> ### opentrack setup. change the input source to "Joystick Input". set the Yaw, Pitch and Roll mapping to the appopriate joystick axis (#4, #2, #2). the Yaw output should also be reversed in the Options/Output/Axis Assignment section.
+> ### opentrack setup. change the input source to "Joystick Input". set the Yaw, Pitch and Roll mapping to the appopriate joystick axis (#4, #3, #2). the Yaw output should also be reversed in the Options/Output/Axis Assignment section.
 > <img src="docs/opentrack.png" width="800">
 > <img src="docs/opentrack output reverse.png" width="800">
 
