@@ -35,15 +35,19 @@
       "arduino",
       "espidf"
     ],
+    "monitor": {
+      "speed": 115200
+    },
     "name": "ESP32-S3 SuperMini",
     "upload": {
       "flash_size": "4MB",
-      "maximum_ram_size": 327680,
+      "maximum_ram_size": 532480,
       "maximum_size": 4194304,
       "require_upload_port": true,
-      "speed": 460800
+      "wait_for_upload_port": true,
+      "use_1200bps_touch": true,
+      "speed": 921600
     },
-    "url": "https://www.aliexpress.com",
-    "vendor": "AliExpress"
+    "url": "https://www.nologo.tech/en/product/esp32/esp32s3supermini/esp32S3SuperMini.html",
+    "vendor": "wmnologo"
 }
-  

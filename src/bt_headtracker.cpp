@@ -7,129 +7,82 @@
 #include "SensorFusion.h"
 #include <BleGamepad.h>
 
-#ifdef ARDUINO_USB_MODE
+#if ARDUINO_USB_MODE
 #define Serial USBSerial
 #endif
 
-const int PIN_BATTERY = 4; // via 2:1 voltage divider 
 
 DFRobot_BMI160 bmi160;
 BleGamepad *pble_gamepad;
-bool show_imu = false;
-bool show_batt = false;
-long bt_update_interval = 50e3L; // 50ms
+int16_t gyro_bias_offset[3] = {0}; // gyro bias offsets for calibration
+const int batt_pin = 4; // via 2:1 voltage divider 
+int batt_mv = 0; // battery voltage in mv
+int batt_level = 0; // battery level in percent
 long batt_update_interval = 10e6L; // 10s
-
+const long bt_update_interval = 50e3L; // 50ms
+bool show_stat = false;
 
 enum LED_STATE {INIT, IDLE, ERROR, BT, GCAL};
 enum LED_STATE led_state;
 void update_led(enum LED_STATE new_led_state)
 {
-    if (new_led_state == led_state)
-        return;
+  if (new_led_state == led_state)
+    return;
 
-    led_state = new_led_state;
-    switch (led_state) {
-        case INIT:
-            neopixelWrite(RGB_BUILTIN, RGB_BRIGHTNESS, RGB_BRIGHTNESS, RGB_BRIGHTNESS); // white
-            // alternative digitalWrite(RGB_BUILTIN, HIGH); // white
-            break;
-        case IDLE:
-            neopixelWrite(RGB_BUILTIN, 0, 0, 0); // black
-            break;
-        case ERROR:
-            neopixelWrite(RGB_BUILTIN, RGB_BRIGHTNESS, 0, 0); // red
-            break;
-        case BT:
-            neopixelWrite(RGB_BUILTIN, 0, 0, RGB_BRIGHTNESS); // blue
-            break;
-        case GCAL:
-            neopixelWrite(RGB_BUILTIN, 0, RGB_BRIGHTNESS, 0); // green
-            break;
-    }
+  led_state = new_led_state;
+  switch (led_state) {
+    case INIT:
+      neopixelWrite(RGB_BUILTIN, RGB_BRIGHTNESS, RGB_BRIGHTNESS, RGB_BRIGHTNESS); // white
+      // alternative digitalWrite(RGB_BUILTIN, HIGH); // white
+      break;
+    case IDLE:
+      neopixelWrite(RGB_BUILTIN, RGB_BRIGHTNESS/8, RGB_BRIGHTNESS/8, 0); // yellow
+      break;
+    case ERROR:
+      neopixelWrite(RGB_BUILTIN, RGB_BRIGHTNESS, 0, 0); // red
+      break;
+    case BT:
+      neopixelWrite(RGB_BUILTIN, 0, 0, RGB_BRIGHTNESS); // blue
+      break;
+    case GCAL:
+      neopixelWrite(RGB_BUILTIN, 0, RGB_BRIGHTNESS, 0); // green
+      break;
+  }
 }
 
+const int16_t max_still_gyro = 50; // max gyro value when still, in raw gyro units
+const int calibrate_count = 200; // consecutive still samples to accept
 
-struct {
-  float gx_offset;
-  float gy_offset;
-  float gz_offset;
-  unsigned long checksum;
-} __attribute__((packed)) bt_headtracker_config;
+void calibrate_gyro(int16_t gyro[]) {
+  static int count;
+  static int gyro_sum[3];
 
-unsigned long compute_bt_headtracker_config_checksum() {
-  unsigned long sum = 0;
-  for (unsigned char *p=(unsigned char *)&bt_headtracker_config; p<(unsigned char *)&bt_headtracker_config.checksum; p++)
-    sum += *p;
-  return sum + 0xa5a5a5a5;
-}
-
-void show_bt_headtracker_config() {
-  Serial.printf("bt_headtracker_config:\n"
-                "gxyz_offset=%7.4f %7.4f %7.4f  checksum=%xh\n", 
-    bt_headtracker_config.gx_offset, 
-    bt_headtracker_config.gy_offset, 
-    bt_headtracker_config.gz_offset,
-    bt_headtracker_config.checksum);
-}
-
-void write_bt_headtracker_config() {
-  Serial.printf("saving calibration to eeprom.\n");
-  bt_headtracker_config.checksum = compute_bt_headtracker_config_checksum();
-  EEPROM.put(0, bt_headtracker_config);
-  EEPROM.commit();
-}
-
-void clear_bt_headtracker_config() {
-  Serial.printf("clearing bt_headtracker_config.\n");
-  bt_headtracker_config.gx_offset = 0.0; 
-  bt_headtracker_config.gy_offset = 0.0; 
-  bt_headtracker_config.gz_offset = 0.0;
-
-  write_bt_headtracker_config();
-}
-
-void calibrate_gyro() {
-
-  int16_t accelGyro[6] = {0};
-  float cal[3] = {0.0}, cal_min[3] = {1.0e6}, cal_max[3] = {-1.0e6};
-  const int total = 500;
-
-  update_led(GCAL);
-  for (int i=9; i>=0; i--) {
-    Serial.printf("keep device still. starting gyro calibration in %d sec.\n", i);
-    if (i > 0)
-      delay(1000);
+  if (abs(gyro[0]) > max_still_gyro || abs(gyro[1]) > max_still_gyro || abs(gyro[2]) > max_still_gyro) {
+    count = 0;
+    return;
   }
 
-  for (int i=0; i<total; i++) {
-    if (i % 50 == 0) {
-      Serial.printf(".");
-    }
-
-    int rslt = bmi160.getAccelGyroData(accelGyro);
+  if (count == 0) {
     for (int j=0; j<3; j++) {
-      cal[j] += (float)accelGyro[j];
-      cal_min[j] = min(cal_min[j], (float)accelGyro[j]);
-      cal_max[j] = max(cal_max[j], (float)accelGyro[j]);
+      gyro_sum[j] = gyro[j];
+    }
+  } else {
+    for (int j=0; j<3; j++) {
+      gyro_sum[j] += gyro[j];
     }
   }
 
-  for (int j=0; j<3; j++) {
-    cal[j] /= total;
+  count++;
+
+  if (count == calibrate_count) {
+    for (int j=0; j<3; j++) {
+      gyro_bias_offset[j] = gyro_sum[j] / count;
+    }
+    count = 0;
+    update_led(GCAL);
+    delay(100);
+    update_led(IDLE);
   }
-
-  Serial.printf("\ncalibration avgxyz= %7.4f, %7.4f, %7.4f  minxyz= %7.4f, %7.4f, %7.4f  maxxyz= %7.4f, %7.4f, %7.4f\n", 
-    cal[0], cal[1], cal[2],
-    cal_min[0], cal_min[1], cal_min[2],
-    cal_max[0], cal_max[1], cal_max[2]);
-
-  bt_headtracker_config.gx_offset = cal[0];
-  bt_headtracker_config.gy_offset = cal[1];
-  bt_headtracker_config.gz_offset = cal[2];  
-
-  write_bt_headtracker_config();
-  update_led(IDLE);
 }
 
 void serial_check() {
@@ -149,79 +102,23 @@ void serial_check() {
   if (cmd == "restart") {
     Serial.printf("restarting esp32.\n");
     ESP.restart();
-  } else if (cmd == "batt") {
-    show_batt = not show_batt;
-    batt_update_interval = show_batt ? 1e6L : 10e6L; // 1s or 10s
-  } else if (cmd == "imu") {
-    show_imu = not show_imu;
-  } else if (cmd == "config") {
-    show_bt_headtracker_config();
-  } else if (cmd == "clear") {
-    clear_bt_headtracker_config();
-  } else if (cmd == "calibrate") {
-    calibrate_gyro();
+  } else if (cmd == "stat") {
+    show_stat = not show_stat;
+    batt_update_interval = show_stat ? 1e6L : 10e6L; // 1s or 10s
   } else {
-    Serial.printf("unknown command: %s\n", cmd.c_str());
+    Serial.printf("unknown command [%s]\n"
+      "available commands:\n"
+      "[restart] restart esp32\n"
+      "[stat]    toggle showing status messages\n",
+      cmd.c_str());
   }
   cmd.clear();
 }
-
-
-#if 0
-// for future LED control
-
-struct 
-void led_msg_t {
-  int r, g, b;
-  int pulse_count;
-  int pulse_msec;
-};
-
-const int num_led_slots = 4;
-struct led_msg_t led_msg[num_led_slots];
-
-void set_led_msg(int slot, r, g, b, pulse_count=0, pulse_msec=0) {
-  led_msg[slot].r = r;
-  led_msg[slot].g = g;
-  led_msg[slot].b = b;
-  led_msg[slot].pulse_count = pulse_count;
-  led_msg[slot].pulse_msec = pulse_msec;
-}
-
-void update_led(long now) {
-  static int slot;
-  static int step;
-  static long next_t;
-
-  if (now - next_t < 0)
-    return;
-
-  if (step == 0) {
-    slot = (slot + 1) % num_led_slots;
-    step = led_msg[slot].pulse_count * 2;
-    next_t = now + 500000; // 0.5s
-    return;
-  }
-
-  step--;
-  if (step % 2)
-    neopixelWrite(RGB_BUILTIN, led_msg[slot].r, led_msg[slot].g, led_msg[slot].b)
-  else
-    neopixelWrite(RGB_BUILTIN, 0, 0, 0);
-  next_t = now + led_msg[slot].pulse_msec * 1000;
-}
-#endif
-
 
 void setup() {
   Serial.begin(115200);
 
   update_led(INIT);
-
-  EEPROM.begin(sizeof(bt_headtracker_config));
-  EEPROM.get(0, bt_headtracker_config);
-  if (compute_bt_headtracker_config_checksum() != bt_headtracker_config.checksum)
-    clear_bt_headtracker_config();
 
   Wire.begin();
   while (bmi160.I2cInit(0x69) != BMI160_OK) {
@@ -269,10 +166,12 @@ void loop() {
   int16_t accelGyro[6] = {0};
   int rslt = bmi160.getAccelGyroData(accelGyro);
 
+  calibrate_gyro(accelGyro);
+
   // apply calibration offsets
-  float gx = accelGyro[0] - bt_headtracker_config.gx_offset;
-  float gy = accelGyro[1] - bt_headtracker_config.gy_offset; 
-  float gz = accelGyro[2] - bt_headtracker_config.gz_offset;
+  float gx = accelGyro[0] - gyro_bias_offset[0];
+  float gy = accelGyro[1] - gyro_bias_offset[1]; 
+  float gz = accelGyro[2] - gyro_bias_offset[2];
 
   float ax = accelGyro[3];
   float ay = accelGyro[4];
@@ -313,27 +212,24 @@ void loop() {
   roll = sensor_fusion.getRoll(); // -90 to +90
   yaw = sensor_fusion.getYaw(); // 0 to 360
   
-  static long last_imu_t;
-  if (t - last_imu_t > 100000) {
-    last_imu_t = t;
-    if (show_imu)
-      Serial.printf("gxyz=[%6.2f %6.2f %6.2f] + axyz=[%6.2f %6.2f %6.2f] ==> PRY=[%6.2f %6.2f %6.2f]\n", 
-        gx, gy, gz, ax, ay, az,
-        pitch, roll, yaw);
-  }
- 
   static long last_batt_t = -batt_update_interval;
   if (t - last_batt_t > batt_update_interval) {
     last_batt_t = t;
-    int mv = analogReadMilliVolts(PIN_BATTERY) * 2; // *2 due to 2:1 voltage divider
-    int level = (mv/1000.0 - 3.7) / (4.2-3.7) * 100; // [3.7-4.2V] maps to [0-100%]
-    level = max(level, 0);
-    level = min(level, 100);
-    pble_gamepad->setBatteryLevel(level);
-
-    if (show_batt)
-      Serial.printf("batt=%5.2fV %d%%\n", mv/1000.0, level);
+    batt_mv = analogReadMilliVolts(batt_pin) * 2; // *2 due to 2:1 voltage divider
+    batt_level = (batt_mv/1000.0 - 3.70) / (4.10 - 3.70) * 100; // [3.7-4.1V] maps to [0-100%]
+    batt_level = constrain(batt_level, 0, 100);
+    pble_gamepad->setBatteryLevel(batt_level);
   } 
+
+  static long last_stat_t;
+  if (show_stat && t - last_stat_t > 100000) {
+    last_stat_t = t;
+    Serial.printf("gxyz=[%6.2f %6.2f %6.2f] axyz=[%6.2f %6.2f %6.2f] PRY=[%7.2f %7.2f %7.2f] gbias=[%3d %3d %3d] batt=[%4.2fV %d%%]\n", 
+      gx, gy, gz, ax, ay, az, 
+      pitch, roll, yaw,
+      gyro_bias_offset[0], gyro_bias_offset[1], gyro_bias_offset[2],
+      batt_mv/1000.0, batt_level);
+  }
 
   static long last_bt_update_t = -bt_update_interval;
   if (t - last_bt_update_t > bt_update_interval) {

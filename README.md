@@ -5,7 +5,7 @@
 - device must be strapped in the correct orientation, can be checked via the serial console or the "Raw tracker data" in opentrack.
 - ./docs folder has various prototype pics, schematics, opentrack setup, etc.
 - imho, this is more stable than the IR or webcam based headtrackers, especially for HMCS operation (aiming with the head). i didn't miss the postional output.
-- there will eventually be gyro drift affecting the yaw output. in practice, drift does not really affect gameplay. you should bind the "Center" function in opentrack to reset the orientation and you can also calibrate the gyro to further minimize drift.
+- there will eventually be gyro drift affecting the yaw output. in practice, drift does not really affect gameplay. you should bind the "Center" function in opentrack to reset the orientation. the device also performs automatic live calibration if you keep it still.
 - feedback, comments and suggestions welcomed!
 
 ## features
@@ -14,27 +14,23 @@
 - bmi160 imu (gyro and accel)
 - simple battery voltage measurement circuit, reports battery level over bluetooth.
 - emulates gamepad X (roll), Y (pitch) and Z (Yaw) axes for 3 rotational degrees of freedom. no translation (position) output.
-- simple serial console to perform basic operations (including gyro calibration).
-- stores gyro calibation bias offsets in eeprom.
+- simple serial console to perform basic operations (restart and status).
+- live gyro calibration if you keep the device still for about 5 secs (green flash confirms gyro bias update).
 
 ## serial console
 
 connect via USB to perform basic operations over the serial console, type one of the following commands and press ENTER:
 
 - `restart`: restart device.
-- `batt`: show battery voltage and approximate level.
-- `imu`: show imu output (gyro, accel and pitch/roll/yaw). used to check proper mounting orientation of the device (when the pitch and roll angles are close to zero).
-- `config`: show configuration (currently only includes gyro calibration bias offsets).
-- `clear`: clear configuration (currently zeros out gyro calibration bias offsets).
-- `calibrate`: start gyro calibration (need to keep device still).
+- `stat`: toggle show imu, orientation, gyro bias, battery voltage and approximate level.
 
 ## LED indication
 
-- solid white: initialization.
+- solid white: initialization (likely too brief to notice)
 - solid/flashing red: error (probably during initialization).
 - solid blue: bluetooth connected and updating IMU.
-- solid green: gyro calibration.
-- nothing, unlit: idle, waiting for bluetooth connection.
+- green flash: gyro calibration bias update.
+- yellow: idle, waiting for bluetooth connection.
 
 ## pictures
 
