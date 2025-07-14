@@ -5,7 +5,7 @@
 - device must be strapped in the correct orientation, can be checked via the serial console or the "Raw tracker data" in opentrack.
 - ./docs folder has various prototype pics, schematics, opentrack setup, etc.
 - imho, this is more stable than the IR or webcam based headtrackers, especially for HMCS operation (aiming with the head). i didn't miss the postional output.
-- there will eventually be gyro drift affecting the yaw output. in practice, drift does not really affect gameplay. you should bind the "Center" function in opentrack to reset the orientation. the device also performs automatic live calibration if you keep it still.
+- there will eventually be gyro drift affecting the yaw output. in practice, drift does not really affect gameplay. you should bind the "Center" function in opentrack to reset the orientation. the device also performs automatic gyro calibration during startup.
 - feedback, comments and suggestions welcomed!
 
 ## features
@@ -15,7 +15,7 @@
 - simple battery voltage measurement circuit, reports battery level over bluetooth.
 - emulates gamepad X (roll), Y (pitch) and Z (Yaw) axes for 3 rotational degrees of freedom. no translation (position) output.
 - simple serial console to perform basic operations (restart and status).
-- live gyro calibration if you keep the device still for about 5 secs (green flash confirms gyro bias update).
+- gyro calibration during startup by keeping the device still for about 10 secs. will retry until succeed.
 
 ## serial console
 
@@ -29,7 +29,7 @@ connect via USB to perform basic operations over the serial console, type one of
 - solid white: initialization (likely too brief to notice)
 - solid/flashing red: error (probably during initialization).
 - solid blue: bluetooth connected and updating IMU.
-- green flash: gyro calibration bias update.
+- solid green: gyro bias calibration, will flash red and repeat if the gyro was moved.
 - yellow: idle, waiting for bluetooth connection.
 
 ## pictures

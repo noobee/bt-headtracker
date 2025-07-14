@@ -14,7 +14,7 @@
 
 DFRobot_BMI160 bmi160;
 BleGamepad *pble_gamepad;
-int16_t gyro_bias_offset[3] = {0}; // gyro bias offsets for calibration
+float gyro_bias_offset[3] = {0.0}; // gyro bias offsets for calibration
 const int batt_pin = 4; // via 2:1 voltage divider 
 int batt_mv = 0; // battery voltage in mv
 int batt_level = 0; // battery level in percent
@@ -50,14 +50,64 @@ void update_led(enum LED_STATE new_led_state)
   }
 }
 
-const int16_t max_still_gyro = 50; // max gyro value when still, in raw gyro units
-const int calibrate_count = 200; // consecutive still samples to accept
+
+int calibrate_gyro() {
+  int16_t accelGyro[6] = {0};
+  int cal_sum[3] = {0};
+  int16_t cal_min[3] = {INT16_MAX}, cal_max[3] = {INT16_MIN};
+  const int total = 500;
+
+  update_led(GCAL);
+  for (int i=0; i<total; i++) {
+    int rslt = bmi160.getAccelGyroData(accelGyro);
+    for (int j=0; j<3; j++) {
+      cal_sum[j] += accelGyro[j];
+      cal_min[j] = min(cal_min[j], accelGyro[j]);
+      cal_max[j] = max(cal_max[j], accelGyro[j]);
+
+      if (cal_max[j] - cal_min[j] > 50) {
+        update_led(ERROR);
+        delay(100);
+        return 0;
+      }
+    }
+  }
+
+  for (int j=0; j<3; j++) {
+    gyro_bias_offset[j] = (float) cal_sum[j] / total;
+  }
+
+  Serial.printf("\ncalibration avgxyz= %7.4f %7.4f %7.4f  minxyz= %4d %4d %4d  maxxyz= %4d %4d %4d\n", 
+    gyro_bias_offset[0], gyro_bias_offset[1], gyro_bias_offset[2],
+    cal_min[0], cal_min[1], cal_min[2],
+    cal_max[0], cal_max[1], cal_max[2]);
+
+  update_led(IDLE);
+  return 1;
+}
+
+
+#if 0
+
+
+const int16_t max_gyro_diff = 30; // max gyro diff when still, in raw gyro units
+const int calibrate_count = 500; // consecutive still samples to accept
 
 void calibrate_gyro(int16_t gyro[]) {
   static int count;
   static int gyro_sum[3];
+  static int16_t gyro_base[3];
+  static bool calibrated = false;
 
-  if (abs(gyro[0]) > max_still_gyro || abs(gyro[1]) > max_still_gyro || abs(gyro[2]) > max_still_gyro) {
+  if (calibrated)
+    return;
+
+  if (count == 0)
+    for (int j=0; j<3; j++) {
+      gyro_base[j] = gyro[j]; // save initial value
+    }
+
+  if (abs(gyro[0] - gyro_base[0]) > max_gyro_diff || abs(gyro[1] - gyro_base[1]) > max_gyro_diff || abs(gyro[2] - gyro_base[2]) > max_gyro_diff) {
     count = 0;
     return;
   }
@@ -76,14 +126,17 @@ void calibrate_gyro(int16_t gyro[]) {
 
   if (count == calibrate_count) {
     for (int j=0; j<3; j++) {
-      gyro_bias_offset[j] = gyro_sum[j] / count;
+      gyro_bias_offset[j] = (float) gyro_sum[j] / count;
     }
     count = 0;
     update_led(GCAL);
-    delay(100);
+    delay(250);
     update_led(IDLE);
+    calibrated = true;
   }
 }
+
+#endif
 
 void serial_check() {
   static String cmd;
@@ -153,6 +206,9 @@ void setup() {
   pble_gamepad = new BleGamepad(s);
   pble_gamepad->begin(&ble_gamepad_config);
 
+  while (!calibrate_gyro()) {
+  }
+
   update_led(IDLE);
 }
 
@@ -165,8 +221,6 @@ void loop() {
 
   int16_t accelGyro[6] = {0};
   int rslt = bmi160.getAccelGyroData(accelGyro);
-
-  calibrate_gyro(accelGyro);
 
   // apply calibration offsets
   float gx = accelGyro[0] - gyro_bias_offset[0];
@@ -224,7 +278,7 @@ void loop() {
   static long last_stat_t;
   if (show_stat && t - last_stat_t > 100000) {
     last_stat_t = t;
-    Serial.printf("gxyz=[%6.2f %6.2f %6.2f] axyz=[%6.2f %6.2f %6.2f] PRY=[%7.2f %7.2f %7.2f] gbias=[%3d %3d %3d] batt=[%4.2fV %d%%]\n", 
+    Serial.printf("gxyz=[%6.2f %6.2f %6.2f] axyz=[%6.2f %6.2f %6.2f] PRY=[%7.2f %7.2f %7.2f] gbias=[%6.2f %6.2f %6.2f] batt=[%4.2fV %d%%]\n", 
       gx, gy, gz, ax, ay, az, 
       pitch, roll, yaw,
       gyro_bias_offset[0], gyro_bias_offset[1], gyro_bias_offset[2],
